@@ -1,0 +1,11 @@
+body { background-color: #f7f7f9; }
+.vehicle-card { transition: transform .2s ease, box-shadow .2s ease; }
+.vehicle-card:hover { transform: translateY(-2px); box-shadow: 0 0.5rem 1rem rgba(0,0,0,.15); }
+.recommended-row { display: grid; grid-auto-flow: column; grid-auto-columns: 260px; gap: 1rem; overflow-x: auto; padding-bottom: .5rem; }
+.recommended-item { min-width: 260px; }
+#filters .form-label { font-weight: 600; }
+.badge.text-bg-danger { background-color: #dc3545 !important; }
+.badge.text-bg-success { background-color: #198754 !important; }
+.navbar-brand { letter-spacing: .5px; }
+.carousel-item img { border-radius: .5rem; }
+footer { border-top: 1px solid rgba(255,255,255,.1); }
