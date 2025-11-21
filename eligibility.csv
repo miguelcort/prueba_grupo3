@@ -1,0 +1,11 @@
+documento,status,surchargePercent,note
+12345678,permitido,0,
+87654321,bloqueado,0,Deuda pendiente
+11223344,siniestro,30,Historial de siniestro
+99887766,permitido,0,
+44556677,siniestro,20,Incidente menor
+22334455,permitido,0,
+77889900,bloqueado,0,Fraude
+33445566,siniestro,25,
+55667788,permitido,0,
+66778899,permitido,0,

@@ -34,15 +34,19 @@ document.addEventListener('DOMContentLoaded', () => {
   const detailCarouselInner = document.getElementById('detailCarouselInner');
   const btnStartReservation = document.getElementById('btnStartReservation');
   const reservationSection = document.getElementById('reservationSection');
+  const docNumber = document.getElementById('docNumber');
   const startDate = document.getElementById('startDate');
   const endDate = document.getElementById('endDate');
   const totalPrice = document.getElementById('totalPrice');
+  const docError = document.getElementById('docError');
   const dateError = document.getElementById('dateError');
   const btnConfirmReservation = document.getElementById('btnConfirmReservation');
   const reservationSummary = document.getElementById('reservationSummary');
 
   let currentVehicle = null;
   let state = { search: '', brand: 'Todas', type: 'Todos', trans: 'Todas', avail: 'Todos', min: 0, max: 1000 };
+  let eligibility = new Map();
+  let csvLoaded = false;
 
   function distinct(list, key) {
     return Array.from(new Set(list.map(i => i[key])));
@@ -180,6 +184,48 @@ document.addEventListener('DOMContentLoaded', () => {
     reservationSection.classList.toggle('d-none', !show);
   }
 
+  function parseCSV(text) {
+    const lines = text.trim().split(/\r?\n/);
+    const header = lines.shift().split(',').map(s => s.trim());
+    const idx = {
+      documento: header.indexOf('documento'),
+      status: header.indexOf('status'),
+      surchargePercent: header.indexOf('surchargePercent'),
+      note: header.indexOf('note')
+    };
+    const map = new Map();
+    lines.forEach(l => {
+      const cols = l.split(',');
+      const doc = (cols[idx.documento] || '').trim();
+      const status = (cols[idx.status] || '').trim().toLowerCase();
+      const pct = Number((cols[idx.surchargePercent] || '0').trim()) || 0;
+      const note = (cols[idx.note] || '').trim();
+      if (doc) map.set(doc, { status, pct, note });
+    });
+    return map;
+  }
+
+  async function loadEligibility() {
+    const fallback = `documento,status,surchargePercent,note\n12345678,permitido,0,\n87654321,bloqueado,0,Deuda pendiente\n11223344,siniestro,30,Historial de siniestro\n99887766,permitido,0,\n44556677,siniestro,20,Incidente menor\n22334455,permitido,0,\n77889900,bloqueado,0,Fraude\n33445566,siniestro,25,\n55667788,permitido,0,\n66778899,permitido,0,`;
+    try {
+      const res = await fetch('eligibility.csv');
+      if (!res.ok) throw new Error('fetch failed');
+      const txt = await res.text();
+      eligibility = parseCSV(txt);
+      csvLoaded = true;
+    } catch (e) {
+      eligibility = parseCSV(fallback);
+      csvLoaded = false;
+    }
+  }
+
+  function docStatus(doc) {
+    const clean = (doc || '').trim();
+    if (!clean) return { status: 'desconocido', pct: 0, note: '' };
+    const rec = eligibility.get(clean);
+    return rec || { status: 'permitido', pct: 0, note: '' };
+  }
+
   function computeDays() {
     if (!startDate.value || !endDate.value) return 0;
     const s = new Date(startDate.value);
@@ -196,13 +242,25 @@ document.addEventListener('DOMContentLoaded', () => {
       dateError.classList.remove('d-none');
       startDate.classList.add('is-invalid');
       endDate.classList.add('is-invalid');
+      btnConfirmReservation.disabled = true;
       return;
     }
     dateError.classList.add('d-none');
     startDate.classList.remove('is-invalid');
     endDate.classList.remove('is-invalid');
-    const total = days * effectivePrice(currentVehicle);
+    const base = days * effectivePrice(currentVehicle);
+    const st = docStatus(docNumber.value);
+    if (st.status === 'bloqueado') {
+      docError.textContent = 'Documento no habilitado para alquilar.' + (st.note ? ` (${st.note})` : '');
+      docError.classList.remove('d-none');
+      btnConfirmReservation.disabled = true;
+      totalPrice.textContent = '$0';
+      return;
+    }
+    docError.classList.add('d-none');
+    const total = Math.round(base * (1 + (st.status === 'siniestro' ? st.pct : 0) / 100));
     totalPrice.textContent = `$${total.toFixed(0)}`;
+    btnConfirmReservation.disabled = !docNumber.value.trim();
   }
 
   searchInput.addEventListener('input', e => { state.search = e.target.value; applyFilters(); });
@@ -256,19 +314,25 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   btnStartReservation.addEventListener('click', () => toggleReservation(true));
+  docNumber.addEventListener('input', updateTotal);
   startDate.addEventListener('change', updateTotal);
   endDate.addEventListener('change', updateTotal);
   btnConfirmReservation.addEventListener('click', () => {
     const days = computeDays();
     if (days <= 0) return;
-    const total = days * effectivePrice(currentVehicle);
+    const st = docStatus(docNumber.value);
+    if (st.status === 'bloqueado') return;
+    const base = days * effectivePrice(currentVehicle);
+    const total = Math.round(base * (1 + (st.status === 'siniestro' ? st.pct : 0) / 100));
     reservationSummary.classList.remove('d-none');
-    reservationSummary.innerHTML = `Reserva confirmada: ${currentVehicle.brand} ${currentVehicle.model}. Días: ${days}. Total: $${total.toFixed(0)}.`;
+    const extra = st.status === 'siniestro' ? ` (ajuste por siniestro +${st.pct}%)` : '';
+    reservationSummary.innerHTML = `Reserva confirmada: ${currentVehicle.brand} ${currentVehicle.model}. Documento: ${docNumber.value}. Días: ${days}. Total: $${total.toFixed(0)}${extra}.`;
   });
 
   populateFilters();
   renderRecommended();
   applyFilters();
+  loadEligibility();
   setTimeout(() => loading.classList.add('d-none'), 400);
 });
   function imageCandidates(query, w = 800, h = 600) {
